@@ -1,0 +1,5 @@
+credentials.py
+*.pyc
+*.iml
+*.xml
+*.idea
