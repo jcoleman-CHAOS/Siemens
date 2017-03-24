@@ -4,8 +4,7 @@ from datetime import datetime
 import pytz
 import credentials as cd
 from os import walk, getcwd, rename, path, mkdir
-
-current_directory = getcwd()
+from termcolor import colored
 
 # use local InfluxDB credentials
 usr = cd.usr
@@ -23,23 +22,36 @@ fmt = '%Y-%m-%dT%H:%M:%S.0000000Z'  # in nanoseconds
 
 
 def get_config_settings():
-    _config = {}
+
+    # Set Defaults
+    _config = {
+        'file_suffix': 'siemens_log.csv',
+        'source_files_path': getcwd(),
+        'archive_path': getcwd() + '/ARCHIVE'
+    }
+
     s = open("siemens_importer.config", 'r')
     for _line in s:
-        if "=" in _line:
+        # ignore comments
+        if _line[0] == '#' or len(_line) == 1:
+            pass
+        elif "=" in _line:
             _x = _line.split("=")
-            _config[_x[0]] = _x[1]
-    # if no file_suffix provided, use default value
-    try:
-        _config['file_suffix']
-    except KeyError:
-        _config['file_suffix'] = 'siemens_log.csv'
+            if _x[1][0] == "\"":
+                _config[_x[0]] = _x[1][1:-2]
+            else:
+                _config[_x[0]] = _x[1]
+        else:
+            pass
     return _config
 
 config = get_config_settings()  # Generate configuration settings dict
 
+source_directory = config['source_files_path']
+archive_directory = config['archive_path']
 
-class Folder():
+
+class Folder:
     def __init__(self):
         self.dirpath = []
         self.dirnames = []
@@ -50,7 +62,7 @@ class Folder():
         self.gen_results()
 
     def gen_results(self):
-        for (dirpath, dirnames, filenames) in walk(current_directory):
+        for (dirpath, dirnames, filenames) in walk(source_directory):
             # Load response from walk
             self.dirpath.extend(dirpath)
             self.dirpath = "".join(self.dirpath)
@@ -129,51 +141,60 @@ def siemens_value(raw_value, measure='Unknown Measurement'):
 
 
 # BEGIN - Collecting files and process them
-print 'Beginning import'
+print colored('Beginning Import\n', 'green')
+
 folder = Folder()
-for _file in folder.selective_suffix():
-    # load file
-    a = []  # this holds the files data
-    f = open(_file, 'r')
-    for line in f:
-        a.append(line)
-    f.close()
+if folder.selective_suffix():
+    print 'Found ' + colored(len(folder.selective_suffix()), 'blue') + ' files for import.'
+    for _file in folder.selective_suffix():
+        # load file
+        a = []  # this holds the files data
+        f = open(source_directory + '/'+ _file, 'r')
+        for line in f:
+            a.append(line)
+        f.close()
 
-    # list comprehension for cleaning the file
-    clean_file = [line[:-2] for line in a if len(line) > 3]  # Removes unwanted chars and lines
-    label = ''  # active variable
-    location = ''  # active location
+        # list comprehension for cleaning the file
+        clean_file = [line[:-2] for line in a if len(line) > 3]  # Removes unwanted chars and lines
+        label = ''  # active variable
+        location = ''  # active location
 
-    # Generate JSON strings from each line measurements
-    for index, l in enumerate(clean_file):
-        # IF new variable: update the label variable and location
-        if len(l) > 0 and l.split()[0] == "Point":
-            tags = l.split()[2].split(".")
-            location = tags[0]
-            label = ''.join(tags[1:])
-        # IF data line is found... create JSON
-        if len(l) == 54:
-            # SPLIT input string
-            y = l.split()
-            value = siemens_value(y[2], label)  # modify the value to the correct type
+        # Generate JSON strings from each line measurements
+        for index, l in enumerate(clean_file):
+            # IF new variable: update the label variable and location
+            if len(l) > 0 and l.split()[0] == "Point":
+                tags = l.split()[2].split(".")
+                location = tags[0]
+                label = ''.join(tags[1:])
+            # IF data line is found... create JSON
+            if len(l) == 54:
+                # SPLIT input string
+                y = l.split()
+                value = siemens_value(y[2], label)  # modify the value to the correct type
 
-            # data and time
-            d = y[0].split('/')
-            d = map(int, d)
-            t = y[1].split(":")
-            t = map(int, t)
-            loc_dt = eastern.localize(datetime(d[2], d[0], d[1], t[0], t[1], t[2]))
+                # data and time
+                d = y[0].split('/')
+                d = map(int, d)
+                t = y[1].split(":")
+                t = map(int, t)
+                loc_dt = eastern.localize(datetime(d[2], d[0], d[1], t[0], t[1], t[2]))
 
-            # generate JSON, ADD to Influxdb
-            entry = json_write(measurement, label, location, loc_dt, value)
-            client.write_points(entry)
+                # generate JSON, ADD to Influxdb
+                entry = json_write(measurement, label, location, loc_dt, value)
+                client.write_points(entry)
 
-        if index % 10 == 0:
-            print "\r.",
-        else:
-            print ".",
+            if index % 10 == 0:
+                print "\r.",
+            else:
+                print ".",
 
-    print "\nImported: " + _file
-    if not path.exists(current_directory + '/ARCHIVE'):
-        mkdir(current_directory + '/ARCHIVE')
-    rename(_file, current_directory + '/ARCHIVE/' + _file)
+        print colored("\rImported: ", 'red') + _file,
+        if not path.exists(archive_directory + '/ARCHIVE'):
+            mkdir(archive_directory + '/ARCHIVE')
+        print colored('ARCHIVING: ', 'yellow') + 'to ' + colored(archive_directory + '/ARCHIVE/' + _file, 'blue'),
+        rename(source_directory + '/' + _file, archive_directory + '/ARCHIVE/' + _file)
+        print colored('SUCCESS', 'green')
+    print '\nAll files successfully imported!'
+else:
+    print colored('WARNING', 'yellow') + ' no files to import'
+
