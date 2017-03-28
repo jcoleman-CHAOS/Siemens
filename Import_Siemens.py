@@ -22,7 +22,6 @@ fmt = '%Y-%m-%dT%H:%M:%S.0000000Z'  # in nanoseconds
 
 
 def get_config_settings():
-
     # Set Defaults
     _config = {
         'file_suffix': 'siemens_log.csv',
@@ -30,7 +29,7 @@ def get_config_settings():
         'archive_path': getcwd() + '/ARCHIVE'
     }
 
-    s = open("siemens_importer.config", 'r')
+    s = open("/home/chaos/Python/Siemens/Siemens/siemens_importer.config", 'r')
     for _line in s:
         # ignore comments
         if _line[0] == '#' or len(_line) == 1:
@@ -40,7 +39,7 @@ def get_config_settings():
             if _x[1][0] == "\"":
                 _config[_x[0]] = _x[1][1:-2]
             else:
-                _config[_x[0]] = _x[1]
+                _config[_x[0]] = _x[1][:-1]
         else:
             pass
     return _config
@@ -142,6 +141,7 @@ def siemens_value(raw_value, measure='Unknown Measurement'):
 
 # BEGIN - Collecting files and process them
 print colored('Beginning Import\n', 'green')
+print 'Looking for files with the suffix ' + colored(config['file_suffix'],'blue')
 
 folder = Folder()
 if folder.selective_suffix():
@@ -180,7 +180,9 @@ if folder.selective_suffix():
                 loc_dt = eastern.localize(datetime(d[2], d[0], d[1], t[0], t[1], t[2]))
 
                 # generate JSON, ADD to Influxdb
-                entry = json_write(measurement, label, location, loc_dt, value)
+		print type(value),		
+		print value
+		entry = json_write(measurement, label, location, loc_dt, value)
                 client.write_points(entry)
 
             if index % 10 == 0:
@@ -196,5 +198,5 @@ if folder.selective_suffix():
         print colored('SUCCESS', 'green')
     print '\nAll files successfully imported!'
 else:
-    print colored('WARNING', 'yellow') + ' no files to import'
+    print colored('WARNING', 'yellow') + ' no files to import in ' + source_directory
 
