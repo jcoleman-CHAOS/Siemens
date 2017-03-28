@@ -29,17 +29,16 @@ def get_config_settings():
         'archive_path': getcwd() + '/ARCHIVE'
     }
 
-    s = open("/home/chaos/Python/Siemens/Siemens/siemens_importer.config", 'r')
+    s = open("siemens_importer.config", 'r')
     for _line in s:
         # ignore comments
         if _line[0] == '#' or len(_line) == 1:
             pass
         elif "=" in _line:
             _x = _line.split("=")
-            if _x[1][0] == "\"":
-                _config[_x[0]] = _x[1][1:-2]
-            else:
-                _config[_x[0]] = _x[1][:-1]
+            _config[_x[0]] = _x[1]
+            if _config[_x[0]][-1] == "\n":
+                _config[_x[0]] = _config[_x[0]][:-1]
         else:
             pass
     return _config
@@ -179,16 +178,16 @@ if folder.selective_suffix():
                 t = map(int, t)
                 loc_dt = eastern.localize(datetime(d[2], d[0], d[1], t[0], t[1], t[2]))
 
-                # generate JSON, ADD to Influxdb
-		print type(value),		
-		print value
-		entry = json_write(measurement, label, location, loc_dt, value)
+                # generate JSON, ADD to Influx db
+                # print type(value),
+                # print value
+                entry = json_write(measurement, label, location, loc_dt, value)
                 client.write_points(entry)
 
-            if index % 10 == 0:
-                print "\r.",
-            else:
-                print ".",
+                if index % 10 == 0:
+                    print "\r.",
+                else:
+                    print ".",
 
         print colored("\rImported: ", 'red') + _file,
         if not path.exists(archive_directory + '/ARCHIVE'):
